@@ -1,43 +1,140 @@
 import 'package:flutter/material.dart';
+import '../data/app_database.dart';
 import '../models/tarea.dart';
 
-// Pantalla base SIN persistencia ni operaciones CRUD implementadas.
-// Conserva las indicaciones TODO para orientar tu trabajo.
 class TareasPage extends StatefulWidget {
-  const TareasPage({super.key});
+  final AppDatabase database;
+
+  const TareasPage({
+    super.key,
+    required this.database,
+  });
 
   @override
   State<TareasPage> createState() => _TareasPageState();
 }
 
 class _TareasPageState extends State<TareasPage> {
-  final TextEditingController _tituloController = TextEditingController();
+  final TextEditingController _tituloController =
+      TextEditingController();
 
-  List<Tarea> _tareas = [];
+  // AGREGAR UNA TAREA
+  Future<void> _agregarTarea() async {
+    final titulo = _tituloController.text.trim();
 
-  @override
-  void initState() {
-    super.initState();
+    if (titulo.isEmpty) {
+      _mostrarMensaje('Escribe un titulo para la tarea');
+      return;
+    }
 
+    await widget.database.agregarTarea(titulo);
+
+    _tituloController.clear();
+    _mostrarMensaje('Tarea agregada correctamente');
   }
 
-  void _agregarTarea() {
-    _pendiente('Implementar registro de tarea');
+  // CAMBIAR EL ESTADO DE UNA TAREA
+  Future<void> _alternarCompletada(
+    Tarea tarea,
+    bool completada,
+  ) async {
+    await widget.database.cambiarEstado(
+      tarea.id,
+      completada,
+    );
   }
 
-  void _alternarCompletada(Tarea tarea, bool completada) {
-    _pendiente('Implementar actualización de tarea');
+  // EDITAR EL TITULO DE UNA TAREA
+  Future<void> _editarTarea(Tarea tarea) async {
+    final controller = TextEditingController(
+      text: tarea.titulo,
+    );
+
+    final nuevoTitulo = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Editar tarea'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: 'Nuevo titulo',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(context, controller.text);
+              },
+              child: const Text('Guardar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    controller.dispose();
+
+    if (nuevoTitulo == null) {
+      return;
+    }
+
+    final titulo = nuevoTitulo.trim();
+
+    if (titulo.isEmpty) {
+      _mostrarMensaje('El titulo no puede estar vacio');
+      return;
+    }
+
+    await widget.database.editarTarea(
+      tarea.id,
+      titulo,
+    );
+
+    _mostrarMensaje('Tarea actualizada correctamente');
   }
 
-  void _editarTarea(Tarea tarea) {
-    _pendiente('Implementar edición de título');
+  // ELIMINAR UNA TAREA
+  Future<void> _eliminarTarea(Tarea tarea) async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Eliminar tarea'),
+          content: Text(
+            '¿Deseas eliminar "${tarea.titulo}"?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Eliminar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmar != true) {
+      return;
+    }
+
+    await widget.database.eliminarTarea(tarea.id);
+
+    _mostrarMensaje('Tarea eliminada correctamente');
   }
 
-  void _eliminarTarea(Tarea tarea) {
-    _pendiente('Implementar eliminación de tarea');
-  }
-
-  void _pendiente(String mensaje) {
+  // MOSTRAR MENSAJES
+  void _mostrarMensaje(String mensaje) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(mensaje)),
     );
@@ -52,7 +149,9 @@ class _TareasPageState extends State<TareasPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Gestor de tareas')),
+      appBar: AppBar(
+        title: const Text('Gestor de tareas'),
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -64,6 +163,7 @@ class _TareasPageState extends State<TareasPage> {
                 labelText: 'Nueva tarea',
                 border: OutlineInputBorder(),
               ),
+              onSubmitted: (_) => _agregarTarea(),
             ),
             const SizedBox(height: 8),
             FilledButton.icon(
@@ -72,46 +172,93 @@ class _TareasPageState extends State<TareasPage> {
               label: const Text('Agregar tarea'),
             ),
             const SizedBox(height: 12),
-            const Text('Mis tareas', style: TextStyle(fontSize: 18)),
+            const Text(
+              'Mis tareas',
+              style: TextStyle(fontSize: 18),
+            ),
             const SizedBox(height: 8),
+
+            // CONSULTAR Y MOSTRAR TAREAS DE SQLITE
             Expanded(
-              child: _tareas.isEmpty
-                  ? const Center(child: Text('Todavía no hay tareas guardadas'))
-                  : ListView.builder(
-                      itemCount: _tareas.length,
-                      itemBuilder: (context, index) {
-                        final tarea = _tareas[index];
-                        return Card(
-                          child: ListTile(
-                            leading: Checkbox(
-                              value: tarea.completada,
-                              onChanged: (valor) {
-                                if (valor != null) {
-                                  _alternarCompletada(tarea, valor);
-                                }
-                              },
-                            ),
-                            title: Text(tarea.titulo),
-                            subtitle: Text('ID: ${tarea.id}'),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  tooltip: 'Editar',
-                                  icon: const Icon(Icons.edit),
-                                  onPressed: () => _editarTarea(tarea),
-                                ),
-                                IconButton(
-                                  tooltip: 'Eliminar',
-                                  icon: const Icon(Icons.delete_outline),
-                                  onPressed: () => _eliminarTarea(tarea),
-                                ),
-                              ],
+              child: StreamBuilder(
+                stream: widget.database.observarTareas(),
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return const Center(
+                      child: Text('Error al consultar las tareas'),
+                    );
+                  }
+
+                  if (!snapshot.hasData) {
+                    return const Center(
+                      child: CircularProgressIndicator(),
+                    );
+                  }
+
+                  final registros = snapshot.data!;
+
+                  final tareas = registros.map((registro) {
+                    return Tarea(
+                      id: registro.id,
+                      titulo: registro.titulo,
+                      completada: registro.completada,
+                    );
+                  }).toList();
+
+                  if (tareas.isEmpty) {
+                    return const Center(
+                      child: Text('Todavia no hay tareas guardadas'),
+                    );
+                  }
+
+                  return ListView.builder(
+                    itemCount: tareas.length,
+                    itemBuilder: (context, index) {
+                      final tarea = tareas[index];
+
+                      return Card(
+                        child: ListTile(
+                          leading: Checkbox(
+                            value: tarea.completada,
+                            onChanged: (valor) {
+                              if (valor != null) {
+                                _alternarCompletada(
+                                  tarea,
+                                  valor,
+                                );
+                              }
+                            },
+                          ),
+                          title: Text(
+                            tarea.titulo,
+                            style: TextStyle(
+                              decoration: tarea.completada
+                                  ? TextDecoration.lineThrough
+                                  : TextDecoration.none,
                             ),
                           ),
-                        );
-                      },
-                    ),
+                          subtitle: Text('ID: ${tarea.id}'),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                tooltip: 'Editar',
+                                icon: const Icon(Icons.edit),
+                                onPressed: () => _editarTarea(tarea),
+                              ),
+                              IconButton(
+                                tooltip: 'Eliminar',
+                                icon: const Icon(Icons.delete_outline),
+                                onPressed: () => _eliminarTarea(tarea),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
             ),
           ],
         ),
